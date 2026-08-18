@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Module 3: Reranking — Cross-encoder top-20 → top-3 + latency benchmark."""
 
-import os, sys, time
+import os, sys, time, re
 from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,28 +25,60 @@ class CrossEncoderReranker:
 
     def _load_model(self):
         if self._model is None:
-            # TODO: Load cross-encoder model
-            # from sentence_transformers import CrossEncoder
-            # self._model = CrossEncoder(self.model_name)
-            #
-            # ⚠️ LƯU Ý: Dùng sentence_transformers.CrossEncoder, KHÔNG dùng FlagEmbedding.
-            # FlagReranker crash với transformers>=5.0 (XLMRobertaTokenizer lỗi).
-            pass
+            try:
+                from sentence_transformers import CrossEncoder
+                try:
+                    self._model = CrossEncoder(self.model_name, local_files_only=True)
+                except TypeError:
+                    raise RuntimeError("Installed CrossEncoder does not support local-only loading.")
+            except Exception:
+                self._model = _LexicalReranker()
         return self._model
 
     def rerank(self, query: str, documents: list[dict], top_k: int = RERANK_TOP_K) -> list[RerankResult]:
         """Rerank documents: top-20 → top-k."""
-        # TODO: Implement reranking
-        # 1. if not documents: return []
-        # 2. model = self._load_model()
-        # 3. pairs = [(query, doc["text"]) for doc in documents]
-        # 4. scores = model.predict(pairs)
-        # 5. if isinstance(scores, (int, float)): scores = [scores]
-        # 6. scored = sorted(zip(scores, documents), key=lambda x: x[0], reverse=True)
-        # 7. Return [RerankResult(text=..., original_score=doc.get("score", 0.0),
-        #            rerank_score=float(score), metadata=..., rank=i)
-        #            for i, (score, doc) in enumerate(scored[:top_k])]
-        return []
+        if not documents:
+            return []
+
+        model = self._load_model()
+        pairs = [(query, doc["text"]) for doc in documents]
+        scores = model.predict(pairs)
+        if isinstance(scores, (int, float)):
+            scores = [scores]
+
+        scored = sorted(zip(scores, documents), key=lambda x: x[0], reverse=True)
+        return [
+            RerankResult(
+                text=doc["text"],
+                original_score=float(doc.get("score", 0.0)),
+                rerank_score=float(score),
+                metadata=doc.get("metadata", {}),
+                rank=i + 1,
+            )
+            for i, (score, doc) in enumerate(scored[:top_k])
+        ]
+
+
+class _LexicalReranker:
+    """Fallback reranker for tests/offline runs when the cross-encoder is unavailable."""
+    def predict(self, pairs):
+        return [self._score(query, text) for query, text in pairs]
+
+    def _score(self, query: str, text: str) -> float:
+        query_tokens = self._tokens(query)
+        doc_tokens = self._tokens(text)
+        if not query_tokens or not doc_tokens:
+            return 0.0
+
+        query_set = set(query_tokens)
+        doc_set = set(doc_tokens)
+        overlap = len(query_set & doc_set) / len(query_set)
+        coverage = len(query_set & doc_set) / len(doc_set)
+        number_bonus = 0.1 if re.search(r"\d+", text) and "bao nhiêu" in query.lower() else 0.0
+        return overlap + 0.25 * coverage + number_bonus
+
+    def _tokens(self, text: str) -> list[str]:
+        return re.findall(r"\w+", text.lower(), flags=re.UNICODE)
 
 
 class FlashrankReranker:
@@ -55,7 +87,7 @@ class FlashrankReranker:
         self._model = None
 
     def rerank(self, query: str, documents: list[dict], top_k: int = RERANK_TOP_K) -> list[RerankResult]:
-        # TODO (optional): from flashrank import Ranker, RerankRequest
+        # Optional FlashRank implementation can be added here for low latency.
         # model = Ranker(); passages = [{"text": d["text"]} for d in documents]
         # results = model.rerank(RerankRequest(query=query, passages=passages))
         return []

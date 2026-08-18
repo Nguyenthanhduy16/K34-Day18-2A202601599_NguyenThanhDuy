@@ -22,7 +22,7 @@ Xem **ASSIGNMENT.md** để biết chi tiết từng module và timeline.
 |-----------|-----------|----------|
 | Docker (Qdrant) | ✅ Có | M2 Dense Search |
 | Python 3.11+ | ✅ Có | Tất cả modules (RAGAS cần 3.11+ cho asyncio) |
-| `OPENAI_API_KEY` | ⚠️ M4+M5 | RAGAS eval (M4), Enrichment LLM (M5) |
+| `OPENROUTER_API_KEY` | ⚠️ M4+M5 | RAGAS eval (M4), Enrichment LLM (M5), answer generation |
 
 **Pre-download models** (tránh timeout trong lab):
 ```bash
@@ -37,7 +37,7 @@ python -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bg
 git clone <repo-url> && cd lab18-production-rag
 docker compose up -d                    # Qdrant
 pip install -r requirements.txt
-cp .env.example .env                    # Điền API keys
+cp .env.example .env                    # Điền OPENROUTER_API_KEY
 python naive_baseline.py                # ⚠️ Chạy TRƯỚC để có baseline
 ```
 
